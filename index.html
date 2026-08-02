@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Online Board Ultimate</title>
+    <!-- Библиотека PeerJS для P2P связи -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+            background: #f0f0f0;
+            user-select: none;
+        }
+
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 14px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 240px;
+        }
+
+        canvas {
+            display: block;
+            background: white;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #tempCanvas {
+            pointer-events: none;
+        }
+
+        .section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .section:last-child {
+            border: none;
+            padding: 0;
+        }
+
+        .label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .grid-tools {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        .colors {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+        }
+
+        .color-btn {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 6px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .color-btn.active {
+            border-color: #000;
+            transform: scale(1.05);
+        }
+
+        button.tool-btn {
+            padding: 8px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        button.tool-btn:hover {
+            background: #f5f5f5;
+        }
+
+        button.tool-btn.active {
+            background: #e6f2ff;
+            border-color: #0066cc;
+            color: #0066cc;
+        }
+
+        #shareBtn {
+            background: #0066cc;
+            color: white;
+            border: none;
+        }
+
+        #shareBtn:hover {
+            background: #0052a3;
+        }
+
+        #status {
+            font-size: 12px;
+            color: #555;
+            word-break: break-all;
+            line-height: 1.4;
+            background: #f9f9f9;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #eee;
+        }
+
+        .lang-switch {
+            position: absolute;
+            top: 12px;
+            right: 14px;
+            font-size: 11px;
+            color: #0066cc;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .board-input {
+            position: absolute;
+            border: 1px dashed #0066cc;
+            background: transparent;
+            outline: none;
+            padding: 2px;
+            font-family: sans-serif;
+            resize: none;
+            overflow: hidden;
+            z-index: 20;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="paintCanvas"></canvas>
+    <canvas id="tempCanvas"></canvas>
+
+    <div id="controls">
+        <span class="lang-switch" onclick="toggleLang()">EN / RU</span>
+
+        <div class="section">
+            <div id="status">...</div>
+            <button id="shareBtn" class="tool-btn" style="display:none;" onclick="copyLink()"></button>
+        </div>
+
+        <!-- Сетка инструментов (6 элементов) -->
+        <div class="section">
+            <span class="label" id="lblTools">Инструменты</span>
+            <div class="grid-tools">
+                <button id="toolBrush" class="tool-btn active" onclick="setTool('brush')">✏️ <span
+                        class="txt-brush">Кисть</span></button>
+                <button id="toolLine" class="tool-btn" onclick="setTool('line')">📏 <span
+                        class="txt-line">Линия</span></button>
+                <button id="toolRect" class="tool-btn" onclick="setTool('rect')">⬜ <span
+                        class="txt-rect">Квадрат</span></button>
+                <button id="toolCircle" class="tool-btn" onclick="setTool('circle')">⭕ <span
+                        class="txt-circle">Круг</span></button>
+                <button id="toolText" class="tool-btn" onclick="setTool('text')">🔤 <span
+                        class="txt-text">Текст</span></button>
+                <button id="toolEraser" class="tool-btn" onclick="setTool('eraser')">🧽 <span
+                        class="txt-eraser">Ластик</span></button>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="row" style="justify-content: space-between;">
+                <span class="label" id="lblSize">Толщина</span>
+                <span id="sizeVal" style="font-size: 12px; font-weight: bold;">5px</span>
+            </div>
+            <input type="range" id="lineWidth" min="1" max="30" value="5" oninput="updateLineWidth(this.value)">
+        </div>
+
+        <div class="section" id="colorSection">
+            <span class="label" id="lblColors">Цвета</span>
+            <div class="colors">
+                <button class="color-btn active" style="background: #000000;"
+                    onclick="setColor('#000000', this)"></button>
+                <button class="color-btn" style="background: #ff3b30;" onclick="setColor('#ff3b30', this)"></button>
+                <button class="color-btn" style="background: #34c759;" onclick="setColor('#34c759', this)"></button>
+                <button class="color-btn" style="background: #007aff;" onclick="setColor('#007aff', this)"></button>
+                <button class="color-btn" style="background: #ffcc00;" onclick="setColor('#ffcc00', this)"></button>
+                <button class="color-btn" style="background: #af52de;" onclick="setColor('#af52de', this)"></button>
+                <button class="color-btn" style="background: #ff9500;" onclick="setColor('#ff9500', this)"></button>
+                <button class="color-btn" style="background: #5856d6;" onclick="setColor('#5856d6', this)"></button>
+                <button class="color-btn" style="background: #a4c2f4;" onclick="setColor('#a4c2f4', this)"></button>
+                <button class="color-btn" style="background: #555555;" onclick="setColor('#555555', this)"></button>
+            </div>
+        </div>
+
+        <div class="section">
+            <button id="clearBtn" class="tool-btn" onclick="clearCanvas()">🗑️ <span>Очистить доску</span></button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('paintCanvas');
+        const ctx = canvas.getContext('2d');
+        const tCanvas = document.getElementById('tempCanvas');
+        const tCtx = tCanvas.getContext('2d');
+
+        const statusDiv = document.getElementById('status');
+        const shareBtn = document.getElementById('shareBtn');
+        const clearBtn = document.getElementById('clearBtn');
+
+        const lblTools = document.getElementById('lblTools');
+        const lblSize = document.getElementById('lblSize');
+        const lblColors = document.getElementById('lblColors');
+        const txtBrush = document.querySelector('.txt-brush');
+        const txtEraser = document.querySelector('.txt-eraser');
+        const txtLine = document.querySelector('.txt-line');
+        const txtText = document.querySelector('.txt-text');
+        const txtRect = document.querySelector('.txt-rect');
+        const txtCircle = document.querySelector('.txt-circle');
+
+        let isDrawing = false;
+        let currentTool = 'brush';
+        let selectedColor = '#000000';
+        let currentSize = 5;
+        let startX = 0, startY = 0;
+
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        tCtx.lineCap = 'round'; tCtx.lineJoin = 'round';
+
+        const i18n = {
+            ru: {
+                init: "Инициализация...", connecting: "Подключение...", created: "Вы создали комнату!", connected: "Соединение установлено!", disconnected: "Собеседник отключился.",
+                shareBtn: "🔗 Пригласить друга", clearBtn: "🗑️ Очистить доску", copied: "Ссылка скопирована!",
+                lblTools: "Инструменты", lblSize: "Толщина", lblColors: "Цвета", txtBrush: "Кисть", txtEraser: "Ластик", txtLine: "Линия", txtText: "Текст", txtRect: "Квадрат", txtCircle: "Круг"
+            },
+            en: {
+                init: "Initializing...", connecting: "Connecting...", created: "Room created!", connected: "Connected!", disconnected: "Peer disconnected.",
+                shareBtn: "🔗 Invite a friend", clearBtn: "🗑️ Clear board", copied: "Link copied!",
+                lblTools: "Tools", lblSize: "Size", lblColors: "Colors", txtBrush: "Brush", txtEraser: "Eraser", txtLine: "Line", txtText: "Text", txtRect: "Rectangle", txtCircle: "Circle"
+            }
+        };
+
+        let currentLang = navigator.language.startsWith('ru') ? 'ru' : 'en';
+        let currentStatusKey = 'init';
+
+        function resizeCanvas() {
+            const temp = document.createElement('canvas');
+            temp.width = canvas.width; temp.height = canvas.height;
+            temp.getContext('2d').drawImage(canvas, 0, 0);
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            tCanvas.width = window.innerWidth; tCanvas.height = window.innerHeight;
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            tCtx.lineCap = 'round'; tCtx.lineJoin = 'round';
+            ctx.drawImage(temp, 0, 0);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let peer = null, connection = null;
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('room');
+
+        function updateInterfaceTexts() {
+            clearBtn.querySelector('span').innerText = i18n[currentLang].clearBtn.replace('🗑️ ', '');
+            shareBtn.innerText = i18n[currentLang].shareBtn;
+            lblTools.innerText = i18n[currentLang].lblTools;
+            lblSize.innerText = i18n[currentLang].lblSize;
+            lblColors.innerText = i18n[currentLang].lblColors;
+            txtBrush.innerText = i18n[currentLang].txtBrush;
+            txtEraser.innerText = i18n[currentLang].txtEraser;
+            txtLine.innerText = i18n[currentLang].txtLine;
+            txtText.innerText = i18n[currentLang].txtText;
+            txtRect.innerText = i18n[currentLang].txtRect;
+            txtCircle.innerText = i18n[currentLang].txtCircle;
+            statusDiv.innerText = i18n[currentLang][currentStatusKey] || currentStatusKey;
+        }
+
+        function toggleLang() {currentLang = currentLang === 'ru' ? 'en' : 'ru'; updateInterfaceTexts();}
+        function setStatus(statusKey) {currentStatusKey = statusKey; updateInterfaceTexts();}
+        updateInterfaceTexts();
+
+        if (roomId) {
+            setStatus('connecting');
+            peer = new Peer();
+            peer.on('open', () => {connection = peer.connect(roomId); setupConnectionHandlers();});
+        } else {
+            peer = new Peer();
+            peer.on('open', (id) => {
+                const roomUrl = window.location.origin + window.location.pathname + '?room=' + id;
+                setStatus('created'); shareBtn.style.display = 'block'; shareBtn.dataset.url = roomUrl;
+            });
+            peer.on('connection', (conn) => {connection = conn; setupConnectionHandlers();});
+        }
+
+        function setupConnectionHandlers() {
+            connection.on('open', () => {setStatus('connected');});
+            connection.on('data', (data) => {
+                if (data.type === 'draw') {
+                    drawFreeform(data.x, data.y, data.isDrawing, data.color, data.size);
+                } else if (data.type === 'line') {
+                    drawStaticLine(data.x1, data.y1, data.x2, data.y2, data.color, data.size);
+                } else if (data.type === 'rect') {
+                    drawStaticRect(data.x1, data.y1, data.w, data.h, data.color, data.size);
+                } else if (data.type === 'circle') {
+                    drawStaticCircle(data.x1, data.y1, data.r, data.color, data.size);
+                } else if (data.type === 'text') {
+                    drawStaticText(data.text, data.x, data.y, data.color, data.size);
+                } else if (data.type === 'clear') {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            });
+            connection.on('close', () => {setStatus('disconnected');});
+        }
+
+        function copyLink() {navigator.clipboard.writeText(shareBtn.dataset.url).then(() => alert(i18n[currentLang].copied));}
+
+        function setTool(tool) {
+            currentTool = tool;
+            ['brush', 'line', 'rect', 'circle', 'text', 'eraser'].forEach(t => {
+                const id = 'tool' + t.charAt(0).toUpperCase() + t.slice(1);
+                document.getElementById(id).classList.toggle('active', t === tool);
+            });
+            const isEraser = tool === 'eraser';
+            document.getElementById('colorSection').style.opacity = isEraser ? '0.4' : '1';
+            document.getElementById('colorSection').style.pointerEvents = isEraser ? 'none' : 'auto';
+        }
+
+        function setColor(color, element) {
+            selectedColor = color;
+            document.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+            if (currentTool === 'eraser') setTool('brush');
+        }
+
+        function updateLineWidth(width) {
+            currentSize = width;
+            document.getElementById('sizeVal').innerText = width + 'px';
+        }
+
+        // --- УПРАВЛЕНИЕ РИСОВАНИЕМ ---
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.closest('#controls') || e.target.classList.contains('board-input')) return;
+            if (currentTool === 'text') {createTextPrompt(e.clientX, e.clientY); return;}
+
+            isDrawing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+
+            if (currentTool === 'brush' || currentTool === 'eraser') {
+                const color = currentTool === 'eraser' ? '#FFFFFF' : selectedColor;
+                drawFreeform(startX, startY, true, color, currentSize);
+                sendDrawPacket(startX, startY, true, color, currentSize);
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const color = currentTool === 'eraser' ? '#FFFFFF' : selectedColor;
+
+            if (currentTool === 'brush' || currentTool === 'eraser') {
+                drawFreeform(e.clientX, e.clientY, true, color, currentSize);
+                sendDrawPacket(e.clientX, e.clientY, true, color, currentSize);
+            } else if (currentTool === 'line') {
+                tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+                tCtx.strokeStyle = color; tCtx.lineWidth = currentSize;
+                tCtx.beginPath(); tCtx.moveTo(startX, startY); tCtx.lineTo(e.clientX, e.clientY); tCtx.stroke();
+            } else if (currentTool === 'rect') {
+                tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+                tCtx.strokeStyle = color; tCtx.lineWidth = currentSize;
+                tCtx.strokeRect(startX, startY, e.clientX - startX, e.clientY - startY);
+            } else if (currentTool === 'circle') {
+                tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+                tCtx.strokeStyle = color; tCtx.lineWidth = currentSize;
+                const r = Math.sqrt(Math.pow(e.clientX - startX, 2) + Math.pow(e.clientY - startY, 2));
+                tCtx.beginPath(); tCtx.arc(startX, startY, r, 0, 2 * Math.PI); tCtx.stroke();
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (!isDrawing) return;
+            isDrawing = false;
+            const color = currentTool === 'eraser' ? '#FFFFFF' : selectedColor;
+
+            if (currentTool === 'brush' || currentTool === 'eraser') {
+                ctx.beginPath();
+                if (connection && connection.open) connection.send({type: 'draw', isDrawing: false});
+            } else if (currentTool === 'line') {
+                tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+                drawStaticLine(startX, startY, e.clientX, e.clientY, color, currentSize);
+                if (connection && connection.open) {
+                    connection.send({type: 'line', x1: startX, y1: startY, x2: e.clientX, y2: e.clientY, color: color, size: currentSize});
+                }
+            } else if (currentTool === 'rect') {
+                tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+                const w = e.clientX - startX; const h = e.clientY - startY;
+                drawStaticRect(startX, startY, w, h, color, currentSize);
+                if (connection && connection.open) {
+                    connection.send({type: 'rect', x1: startX, y1: startY, w: w, h: h, color: color, size: currentSize});
+                }
+            } else if (currentTool === 'circle') {
+                tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+                const r = Math.sqrt(Math.pow(e.clientX - startX, 2) + Math.pow(e.clientY - startY, 2));
+                drawStaticCircle(startX, startY, r, color, currentSize);
+                if (connection && connection.open) {
+                    connection.send({type: 'circle', x1: startX, y1: startY, r: r, color: color, size: currentSize});
+                }
+            }
+        });
+
+        function drawFreeform(x, y, state, color, size) {
+            if (!state) {ctx.beginPath(); return;}
+            ctx.strokeStyle = color; ctx.lineWidth = size;
+            ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y);
+        }
+
+        function drawStaticLine(x1, y1, x2, y2, color, size) {
+            ctx.strokeStyle = color; ctx.lineWidth = size;
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.beginPath();
+        }
+
+        function drawStaticRect(x1, y1, w, h, color, size) {
+            ctx.strokeStyle = color; ctx.lineWidth = size;
+            ctx.strokeRect(x1, y1, w, h);
+        }
+
+        function drawStaticCircle(x1, y1, r, color, size) {
+            ctx.strokeStyle = color; ctx.lineWidth = size;
+            ctx.beginPath(); ctx.arc(x1, y1, r, 0, 2 * Math.PI); ctx.stroke(); ctx.beginPath();
+        }
+
+        function createTextPrompt(x, y) {
+            document.querySelectorAll('.board-input').forEach(el => el.remove());
+            const input = document.createElement('textarea');
+            input.className = 'board-input';
+            input.style.left = x + 'px'; input.style.top = y + 'px';
+            const fontSize = Math.max(14, currentSize * 3);
+            input.style.fontSize = fontSize + 'px'; input.style.color = selectedColor;
+            document.body.appendChild(input);
+            input.focus();
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {e.preventDefault(); input.blur();}
+            });
+
+            input.addEventListener('blur', () => {
+                const text = input.value.trim();
+                if (text) {
+                    drawStaticText(text, x, y + fontSize, selectedColor, fontSize);
+                    if (connection && connection.open) {
+                        connection.send({type: 'text', text: text, x: x, y: y + fontSize, color: selectedColor, size: fontSize});
+                    }
+                }
+                input.remove();
+            });
+        }
+
+        function drawStaticText(text, x, y, color, fontSize) {
+            ctx.fillStyle = color; ctx.font = `${fontSize}px system-ui, sans-serif`;
+            ctx.textBaseline = 'alphabetic';
+            const lines = text.split(' ');
+            lines.forEach((line, index) => {ctx.fillText(line, x, y + (index * fontSize * 1.2));});
+        }
+
+        function sendDrawPacket(x, y, state, color, size) {
+            if (connection && connection.open) {
+                connection.send({type: 'draw', x: x, y: y, isDrawing: state, color: color, size: size});
+            }
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (connection && connection.open) connection.send({type: 'clear'});
+        }
+    </script>
+</body>
+
+</html>
