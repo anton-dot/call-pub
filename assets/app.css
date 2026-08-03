@@ -1214,6 +1214,54 @@ input[type="range"] {
     height: 16px;
 }
 
+.icons-fallback i[data-lucide] {
+    display: none;
+}
+
+.icons-fallback .btn::after {
+    content: attr(title);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.icons-fallback .btn.icon::after,
+.icons-fallback .tool-btn::after,
+.icons-fallback .action-btn::after,
+.icons-fallback .call-btn::after,
+.icons-fallback .call-menu-btn::after,
+.icons-fallback .stream-action-btn::after {
+    content: "?";
+}
+
+.icons-fallback [data-tool="pen"]::after { content: "P"; }
+.icons-fallback [data-tool="eraser"]::after { content: "E"; }
+.icons-fallback [data-tool="line"]::after { content: "L"; }
+.icons-fallback [data-tool="rect"]::after { content: "R"; }
+.icons-fallback [data-tool="circle"]::after { content: "O"; }
+.icons-fallback [data-tool="text"]::after { content: "T"; }
+.icons-fallback [data-tool="pointer"]::after { content: "Ptr"; font-size: 9px; }
+.icons-fallback [data-tool="pan"]::after { content: "H"; }
+.icons-fallback #lineMenuBtn::after,
+.icons-fallback .call-menu-btn::after { content: "v"; }
+.icons-fallback #undoBtn::after { content: "Undo"; font-size: 9px; }
+.icons-fallback #addImageBtn::after { content: "Img"; font-size: 9px; }
+.icons-fallback #downloadBtn::after { content: "PNG"; font-size: 9px; }
+.icons-fallback #clearBtn::after { content: "Del"; font-size: 9px; }
+.icons-fallback #zoomOutBtn::after { content: "-"; }
+.icons-fallback #zoomInBtn::after { content: "+"; }
+.icons-fallback #copyLinkBtn::after { content: "Link"; }
+.icons-fallback #newRoomBtn::after { content: "+"; }
+.icons-fallback #newBoardBtn::after { content: "New"; }
+.icons-fallback #joinBtn::after { content: "Go"; }
+.icons-fallback #micToggleBtn::after { content: "Mic"; font-size: 9px; }
+.icons-fallback #cameraToggleBtn::after,
+.icons-fallback #videoBtn::after { content: "Cam"; font-size: 9px; }
+.icons-fallback #speakerMenuBtn::after { content: "Vol"; font-size: 9px; }
+.icons-fallback #audioBtn::after { content: "Call"; font-size: 9px; }
+.icons-fallback #screenBtn::after { content: "Scr"; font-size: 9px; }
+.icons-fallback #hangupBtn::after { content: "End"; font-size: 9px; }
+
 @media (max-width: 1120px) {
     body {
         overflow: auto;

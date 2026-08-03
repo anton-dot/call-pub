@@ -120,6 +120,21 @@ function hideAppLoader() {
     appLoader?.classList.add('ready');
 }
 
+function refreshIcons() {
+    if (!window.lucide?.createIcons) {
+        document.body.classList.add('icons-fallback');
+        return;
+    }
+    try {
+        window.lucide.createIcons();
+        document.body.classList.remove('icons-fallback');
+    } catch {
+        document.body.classList.add('icons-fallback');
+    }
+}
+
+window.setTimeout(hideAppLoader, 5000);
+
 function toast(message) {
     toastEl.textContent = message;
     toastEl.classList.add('show');
@@ -179,8 +194,19 @@ async function normalizeImageDataUrl(dataUrl) {
     };
 }
 
+function createId(prefix = 'id') {
+    const browserCrypto = globalThis.crypto;
+    if (browserCrypto?.randomUUID) return `${prefix}-${browserCrypto.randomUUID()}`;
+    if (browserCrypto?.getRandomValues) {
+        const bytes = new Uint8Array(16);
+        browserCrypto.getRandomValues(bytes);
+        return `${prefix}-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+    }
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function createRoomId() {
-    return `callpub-${crypto.randomUUID().slice(0, 8)}`;
+    return createId('callpub').slice(0, 17);
 }
 
 function boardStorageKey(roomId = app.roomId) {
@@ -609,7 +635,7 @@ function setLineStyle(style) {
         both: 'move-horizontal'
     }[style] || 'minus';
     $('#lineToolBtn i').setAttribute('data-lucide', icon);
-    lucide.createIcons();
+    refreshIcons();
     setTool('line');
     closePopovers();
 }
@@ -1033,7 +1059,7 @@ function applyBoardEvent(event) {
 
     if (event.kind === 'text') {
         createTextObject({
-            id: event.id || crypto.randomUUID(),
+            id: event.id || createId('text'),
             x: event.x,
             y: event.y,
             width: event.width || 180,
@@ -1052,7 +1078,7 @@ function applyBoardEvent(event) {
 
     if (event.kind === 'image') {
         createImageObject({
-            id: event.id || crypto.randomUUID(),
+            id: event.id || createId('image'),
             x: event.x,
             y: event.y,
             width: event.width || 220,
@@ -1228,7 +1254,7 @@ function normalizeShapeEvent(event) {
     const width = Math.max(16, Math.abs(x2 - x1));
     const height = Math.max(16, Math.abs(y2 - y1));
     return {
-        id: event.id || crypto.randomUUID(),
+        id: event.id || createId('shape'),
         kind: event.kind,
         x,
         y,
@@ -1749,7 +1775,7 @@ function previewShape(toPoint) {
 
 function openTextEditor(point, screenPoint) {
     const object = {
-        id: crypto.randomUUID(),
+        id: createId('text'),
         x: point.x,
         y: point.y,
         width: 180,
@@ -1782,7 +1808,7 @@ async function addImageFromFile(file, point = boardCenterPoint()) {
         const height = Math.max(48, Math.round(image.height * scale));
         commitBoardEvent({
             kind: 'image',
-            id: crypto.randomUUID(),
+            id: createId('image'),
             x: point.x - width / 2,
             y: point.y - height / 2,
             width,
@@ -1934,7 +1960,7 @@ function onPointerUp(event) {
 
     if (Math.hypot(point.x - start.x, point.y - start.y) < 2) return;
     if (isShapeKind(app.tool)) {
-        commitBoardEvent(normalizeShapeEvent({id: crypto.randomUUID(), kind: app.tool, x1: start.x, y1: start.y, x2: point.x, y2: point.y, lineStyle: app.tool === 'line' ? app.lineStyle : undefined, color: app.color, size: app.size}));
+        commitBoardEvent(normalizeShapeEvent({id: createId('shape'), kind: app.tool, x1: start.x, y1: start.y, x2: point.x, y2: point.y, lineStyle: app.tool === 'line' ? app.lineStyle : undefined, color: app.color, size: app.size}));
     }
 }
 
@@ -2018,7 +2044,7 @@ function updateCallButtons() {
     cameraToggleBtn.title = app.videoMuted ? 'Turn camera on' : 'Turn camera off';
     micToggleBtn.querySelector('i').setAttribute('data-lucide', app.audioMuted ? 'mic-off' : 'mic');
     cameraToggleBtn.querySelector('i').setAttribute('data-lucide', app.videoMuted ? 'video-off' : 'video');
-    lucide.createIcons();
+    refreshIcons();
 }
 
 async function applySpeakerOutput() {
@@ -2267,7 +2293,7 @@ function addStreamTile(id, stream, label, kind, muted = false) {
         tile.ondblclick = null;
     }
 
-    lucide.createIcons();
+    refreshIcons();
 }
 
 function removeStreamTile(id) {
@@ -2461,7 +2487,7 @@ function bindUi() {
         const isFullscreen = document.fullscreenElement === streamViewer;
         fullscreenStreamBtn.title = isFullscreen ? 'Exit full screen' : 'Full screen';
         fullscreenStreamBtn.querySelector('i').setAttribute('data-lucide', isFullscreen ? 'minimize' : 'maximize');
-        lucide.createIcons();
+        refreshIcons();
     });
 
     $('#undoBtn').addEventListener('click', undoLast);
@@ -2518,5 +2544,4 @@ updateBoardBackground();
 updateZoomUi();
 startCursorCleanup();
 initPeer();
-lucide.createIcons();
-window.setTimeout(hideAppLoader, 5000);
+refreshIcons();
