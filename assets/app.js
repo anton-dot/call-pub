@@ -68,6 +68,7 @@ const app = {
     connections: new Map(),
     peerProfiles: new Map(),
     heartbeatTimer: null,
+    reconnectTimer: null,
     remoteCursors: new Map(),
     cursorCleanupTimer: null,
     lastCursorSent: 0,
@@ -206,11 +207,23 @@ function createId(prefix = 'id') {
 }
 
 function createRoomId() {
-    return createId('callpub').slice(0, 17);
+    return `callpub-${createId('room').replace(/^room-/, '').replace(/-/g, '').slice(0, 10)}`;
 }
 
 function boardStorageKey(roomId = app.roomId) {
     return `callpub.board.${roomId || 'draft'}`;
+}
+
+function roomHostStorageKey(roomId = app.roomId) {
+    return `callpub.host.${roomId || 'draft'}`;
+}
+
+function markRoomHost(roomId = app.roomId) {
+    if (roomId) localStorage.setItem(roomHostStorageKey(roomId), '1');
+}
+
+function isKnownRoomHost(roomId = app.roomId) {
+    return Boolean(roomId && localStorage.getItem(roomHostStorageKey(roomId)) === '1');
 }
 
 function saveBoardState(roomId = app.roomId) {
@@ -239,7 +252,11 @@ function loadBoardState(roomId = app.roomId) {
 
 function roomUrl() {
     if (!app.roomId) return window.location.href;
-    return `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(app.roomId)}`;
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('room', app.roomId);
+    return url.toString();
 }
 
 function updateRoomUi() {
@@ -343,7 +360,23 @@ function cleanupPeer(peerId, reason = 'left') {
     removeRemoteCursor(peerId);
     log(reason === 'stale' ? `Removed inactive participant: ${peerId}` : `Participant left: ${peerId}`);
     renderParticipants();
-    if (app.connections.size === 0) setStatus('Room ready, waiting for participants', 'ok');
+    if (app.connections.size === 0) {
+        if (app.hostingRoom) setStatus('Room ready, waiting for participants', 'ok');
+        else {
+            setStatus('Disconnected from room, reconnecting...', 'pending');
+            scheduleRoomReconnect();
+        }
+    }
+}
+
+function scheduleRoomReconnect() {
+    if (app.hostingRoom || app.reconnectTimer || !app.peer || !app.roomId) return;
+    app.reconnectTimer = window.setTimeout(() => {
+        app.reconnectTimer = null;
+        if (app.hostingRoom || app.connections.size > 0 || !app.peer || app.peer.destroyed) return;
+        const conn = app.peer.connect(app.roomId, {reliable: true});
+        setupConnection(conn);
+    }, 1800);
 }
 
 function startHeartbeat() {
@@ -473,6 +506,7 @@ function initPeer() {
 
     if (!app.roomId) {
         app.roomId = createRoomId();
+        markRoomHost(app.roomId);
         window.history.replaceState({}, '', roomUrl());
     }
 
@@ -480,6 +514,10 @@ function initPeer() {
 
     function scheduleHostRetry() {
         if (app.hostingRoom || hostRetryTimer) return;
+        if (!isKnownRoomHost(app.roomId)) {
+            scheduleRoomReconnect();
+            return;
+        }
         hostRetryTimer = window.setTimeout(() => {
             hostRetryTimer = 0;
             if (app.hostingRoom || app.connections.size > 0) return;
@@ -501,6 +539,7 @@ function initPeer() {
             opened = true;
             app.ownId = id;
             app.hostingRoom = true;
+            markRoomHost(app.roomId);
             updateRoomUi();
             loadBoardState(app.roomId);
             startHeartbeat();
@@ -564,7 +603,8 @@ function initPeer() {
         });
     }
 
-    becomeRoomHost();
+    if (urlParams.get('room') && !isKnownRoomHost(app.roomId)) joinExistingRoom();
+    else becomeRoomHost();
 }
 
 function setupColors() {
@@ -1966,25 +2006,55 @@ function onPointerUp(event) {
 
 async function copyRoomLink() {
     if (!app.roomId) return;
+    const link = roomUrl();
     try {
-        await navigator.clipboard.writeText(roomUrl());
+        await navigator.clipboard.writeText(link);
         toast('Room invite link copied');
     } catch {
-        roomInput.select();
-        toast('Copy the invite link from the address bar');
+        const field = document.createElement('input');
+        field.value = link;
+        field.setAttribute('readonly', '');
+        field.style.position = 'fixed';
+        field.style.left = '-9999px';
+        document.body.append(field);
+        field.select();
+        const copied = document.execCommand?.('copy');
+        field.remove();
+        if (copied) toast('Room invite link copied');
+        else {
+            roomInput.value = link;
+            roomInput.select();
+            toast('Copy the full invite link from the room field');
+        }
     }
 }
 
 function joinRoom() {
     const value = roomInput.value.trim();
     if (!value) return toast('Enter a room ID');
-    window.location.href = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(value)}`;
+    const roomId = (() => {
+        try {
+            return new URL(value).searchParams.get('room') || value;
+        } catch {
+            return value;
+        }
+    })();
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('room', roomId);
+    window.location.href = url.toString();
 }
 
 function newRoom() {
     const nextRoomId = createRoomId();
     saveBoardState(nextRoomId);
-    window.location.href = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(nextRoomId)}`;
+    markRoomHost(nextRoomId);
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('room', nextRoomId);
+    window.location.href = url.toString();
 }
 
 function newBoard() {
