@@ -72,6 +72,7 @@ const app = {
     remoteCursors: new Map(),
     cursorCleanupTimer: null,
     lastCursorSent: 0,
+    displayNameBroadcastTimer: null,
     pointerActive: null,
     selectedObject: null,
     mediaCalls: new Map(),
@@ -2451,11 +2452,27 @@ function onWheel(event) {
     zoomAt(point.x, point.y, app.view.scale * factor);
 }
 
-function updateDisplayName(value) {
-    app.displayName = (value || '').trim().slice(0, 32) || 'Guest';
+function normalizeDisplayName(value) {
+    return (value || '').trim().slice(0, 32) || 'Guest';
+}
+
+function saveDisplayName(value) {
+    app.displayName = normalizeDisplayName(value);
     localStorage.setItem('callpub.displayName', app.displayName);
     renderParticipants();
+}
+
+function updateDisplayName(value, {broadcastNow = true} = {}) {
+    saveDisplayName(value);
+    if (!broadcastNow) return;
+    window.clearTimeout(app.displayNameBroadcastTimer);
     broadcastProfile();
+}
+
+function queueDisplayNameUpdate(value) {
+    saveDisplayName(value);
+    window.clearTimeout(app.displayNameBroadcastTimer);
+    app.displayNameBroadcastTimer = window.setTimeout(broadcastProfile, 300);
 }
 
 function toggleAudioMute() {
@@ -2484,6 +2501,7 @@ function bindUi() {
     $('#newBoardBtn').addEventListener('click', newBoard);
     $('#joinBtn').addEventListener('click', joinRoom);
     displayNameInput.value = app.displayName;
+    displayNameInput.addEventListener('input', () => queueDisplayNameUpdate(displayNameInput.value));
     displayNameInput.addEventListener('change', () => updateDisplayName(displayNameInput.value));
     displayNameInput.addEventListener('blur', () => updateDisplayName(displayNameInput.value));
     micSelect.addEventListener('change', () => {
@@ -2598,6 +2616,7 @@ function bindUi() {
     navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices);
     window.addEventListener('resize', resizeBoard);
     window.addEventListener('beforeunload', () => {
+        updateDisplayName(displayNameInput.value, {broadcastNow: false});
         saveBoardState();
         broadcast({type: 'bye', from: app.ownId});
         app.peer?.destroy();
